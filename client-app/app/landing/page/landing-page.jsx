@@ -1,23 +1,22 @@
-// app/landing/page/landing-page.jsx
-
 'use client'
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import FilePicker from "@/components/FilePicker";
 
 const LandingPage = () => {
-  const [serverData, setServerData] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState(null);
 
   const handleFileSelect = async (file) => {
-    console.log("Selected file:", file.name);
+    setUploading(true);
+    setMessage(null);
+    console.log("📂 Selected file:", file.name);
 
     try {
-      // Create a FormData object and append the file
       const formData = new FormData();
       formData.append("file", file);
 
-      // Send the file to the server using a POST request
-      const response = await fetch("http://localhost:8000/uploadfile", {
+      const response = await fetch("http://localhost:8000/file/uploadfile", {
         method: "POST",
         body: formData,
       });
@@ -26,49 +25,47 @@ const LandingPage = () => {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log("🚀 ~ File upload response ~ data:", data);
+      const blob = await response.blob();
 
-      setServerData(data);
+      // Create a downloadable link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = "translated_output.srt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setMessage("✅ File translated and downloaded successfully!");
+
     } catch (error) {
-      console.error("Error uploading file:", error);
+      console.error("❌ Error uploading file:", error);
+      setMessage("⚠️ Failed to upload or download. Try again.");
+    } finally {
+      setUploading(false);
     }
   };
-
-  // Fetch data from the server
-  const fetchData = async () => {
-    try {
-      const response = await fetch("http://localhost:8000");
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log("🚀 ~ fetchData ~ data:", data)
-      
-      setServerData(data);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4">Welcome to the Translator App</h1>
-      <p className="text-lg mb-6">Translate text into multiple languages with ease.</p>
-      <FilePicker onFileSelect={handleFileSelect} />
-      <div className="mt-6">
-        <h2 className="text-2xl font-semibold mb-2">Server Data:</h2>
-        {serverData ? (
-          <pre className="bg-gray-900 p-4 rounded">{JSON.stringify(serverData, null, 2)}</pre>
-        ) : (
-          <p>Loading data from the server...</p>
+    <div className="container mx-auto px-4 py-10 max-w-3xl">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-3">🎬 SRT Translator App</h1>
+        <p className="text-gray-600 mb-6">Upload a Turkish `.txt` transcript and get a translated `.srt` subtitle file.</p>
+      </div>
+
+      <div className="bg-white p-6 shadow-xl rounded-lg">
+        <FilePicker onFileSelect={handleFileSelect} />
+        {uploading && (
+          <p className="mt-4 text-blue-500">Uploading and translating... ⏳</p>
+        )}
+        {message && (
+          <p className={`mt-4 font-medium ${message.includes("✅") ? "text-green-600" : "text-red-500"}`}>
+            {message}
+          </p>
         )}
       </div>
-    </div> 
+    </div>
   );
 };
 

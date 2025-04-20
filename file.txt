@@ -8,3 +8,5 @@ source venv/bin/activate
 pip install fastapi[all]
 
 fastapi dev main.py
+
+pip install fastapi transformers torch uvicorn python-multipart, sentencepiece
