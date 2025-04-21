@@ -1,18 +1,16 @@
 # app/controllers/item_controller.py
 
-from fastapi import File, UploadFile, APIRouter, HTTPException
-from fastapi.responses import FileResponse
-from transformers import MarianMTModel, MarianTokenizer
-
-from fastapi import FastAPI, WebSocket
-from fastapi import Form
-from fastapi.responses import HTMLResponse
 import asyncio
 import tempfile
+from fastapi import Form
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
+from transformers import MarianMTModel, MarianTokenizer
+from fastapi import File, UploadFile, APIRouter, HTTPException
 
 
 router = APIRouter()
-# shared.py (or top of your controller file)
 active_websockets = {}
 
 
@@ -23,6 +21,8 @@ def load_json(index: str, timestamps: str, text: str) -> dict:
         "timestamps": timestamps,
         "text": text
     }
+def percentage_cal(iterate, lent):
+  return round((iterate / lent) * 100, 1) 
 
 # Converts raw text to list of dicts
 def convert_json(all_data: str) -> list:
@@ -49,20 +49,6 @@ def translate_model(text: str) -> str:
     translated = model.generate(**inputs)
     return tokenizer.decode(translated[0], skip_special_tokens=True)
 
-progress_bar = None
-
-# Batch translation for a list of text blocks
-def translate_text(text_data: list[dict]) -> list[dict]:
-    for idx, item in enumerate(text_data):
-        try:
-            translated_text = translate_model(item["text"])
-            progress_bar = percentage_cal(idx+1, len(text_data))
-            item['translated'] = translated_text
-        except Exception as e:
-            print(f"Error while translating index {item.get('index')}: {e}")
-            item['translated'] = "[Translation Failed]"
-    return text_data
-
 # Upload endpoint
 @router.post("/uploadfile/")
 async def create_upload_file(file: UploadFile, session_id: str  = Form(...)):
@@ -72,16 +58,15 @@ async def create_upload_file(file: UploadFile, session_id: str  = Form(...)):
         if not json_data:
             raise HTTPException(status_code=400, detail="Invalid or empty file format.")
         
-        websocket = active_websockets.get(session_id)
+        websocket = None
+        for _ in range(30):
+            websocket = active_websockets.get(session_id)
+            if websocket:
+                break
+            await asyncio.sleep(0.1)
         if not websocket:
             raise HTTPException(status_code=400, detail="WebSocket not connected for this session.")
 
-
-        # for item in json_data:
-        #     print("Index:", item["index"])
-        #     print("Title:", item["timestamps"])
-        #     print("Text:", item["text"])
-        #     print("-----")
         for idx, item in enumerate(json_data):
             try:
                 translated_text = translate_model(item["text"])
@@ -91,9 +76,9 @@ async def create_upload_file(file: UploadFile, session_id: str  = Form(...)):
                 item['translated'] = "[Translation Failed]"
             percentage = percentage_cal(idx+1, len(json_data))
             await websocket.send_text(f"Progress: {percentage}%")
+            await asyncio.sleep(0.01)
 
     
-        # translated_data = translate_text(json_data)
         srt_content = ""
         for item in json_data:
             index = item["index"]
@@ -113,11 +98,7 @@ async def create_upload_file(file: UploadFile, session_id: str  = Form(...)):
         raise HTTPException(status_code=400, detail="File must be UTF-8 encoded.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    
-def percentage_cal(iterate, lent):
-  return round((iterate / lent) * 100, 1)    
-
-# item_controller.py
+       
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
@@ -131,10 +112,3 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     finally:
         active_websockets.pop(session_id, None)
 
-
-# @router.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     await websocket.accept()
-#     while True:
-#         # data = await websocket.receive_text()
-#         await websocket.send_text(f"Message text was: {progress_bar}")
